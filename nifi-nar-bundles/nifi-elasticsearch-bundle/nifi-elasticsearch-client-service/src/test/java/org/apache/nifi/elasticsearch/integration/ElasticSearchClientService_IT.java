@@ -18,10 +18,14 @@
 package org.apache.nifi.elasticsearch.integration;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.http.HttpEntity;
+import org.apache.http.entity.ContentType;
+import org.apache.http.nio.entity.NStringEntity;
 import org.apache.nifi.components.ConfigVerificationResult;
 import org.apache.nifi.components.PropertyDescriptor;
-import org.apache.nifi.controller.VerifiableControllerService;
 import org.apache.nifi.elasticsearch.AuthorizationScheme;
 import org.apache.nifi.elasticsearch.DeleteOperationResponse;
 import org.apache.nifi.elasticsearch.ElasticSearchClientService;
@@ -31,7 +35,6 @@ import org.apache.nifi.elasticsearch.IndexOperationRequest;
 import org.apache.nifi.elasticsearch.IndexOperationResponse;
 import org.apache.nifi.elasticsearch.MapBuilder;
 import org.apache.nifi.elasticsearch.SearchResponse;
-import org.apache.nifi.elasticsearch.TestControllerServiceProcessor;
 import org.apache.nifi.elasticsearch.UpdateOperationResponse;
 import org.apache.nifi.ssl.SSLContextService;
 import org.apache.nifi.ssl.StandardRestrictedSSLContextService;
@@ -39,11 +42,17 @@ import org.apache.nifi.ssl.StandardSSLContextService;
 import org.apache.nifi.util.MockConfigurationContext;
 import org.apache.nifi.util.MockControllerServiceLookup;
 import org.apache.nifi.util.MockVariableRegistry;
+import org.apache.nifi.util.StringUtils;
+import org.elasticsearch.client.Request;
+import org.elasticsearch.client.Response;
+import org.elasticsearch.client.ResponseException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -62,12 +71,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
     @AfterEach
     void after() throws Exception {
-        service.onDisabled();
+        ((ElasticSearchClientServiceImpl) service).onDisabled();
     }
 
     private Map<PropertyDescriptor, String> getClientServiceProperties() {
@@ -77,18 +87,43 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
 
     @Test
     void testVerifySuccess() {
-        final List<ConfigVerificationResult> results = ((VerifiableControllerService) service).verify(
+        final List<ConfigVerificationResult> results = service.verify(
                 new MockConfigurationContext(service, getClientServiceProperties(), runner.getProcessContext().getControllerServiceLookup(), new MockVariableRegistry()),
                 runner.getLogger(),
                 Collections.emptyMap()
         );
-        assertEquals(3, results.size());
+        assertEquals(4, results.size());
         assertEquals(3, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SUCCESSFUL).count(), results.toString());
+        assertVerifySnifferSkipped(results);
+    }
+
+    @Test
+    void testVerifySniffer() {
+        runner.disableControllerService(service);
+        //runner.setProperty(service, ElasticSearchClientService.SNIFF_CLUSTER_NODES, "true");
+        //runner.setProperty(service, ElasticSearchClientService.SNIFF_ON_FAILURE, "false");
+        runner.enableControllerService(service);
+        assertVerifySniffer();
+
+        runner.disableControllerService(service);
+        //runner.setProperty(service, ElasticSearchClientService.SNIFF_ON_FAILURE, "true");
+        runner.enableControllerService(service);
+        assertVerifySniffer();
+    }
+
+    private void assertVerifySniffer() {
+        final List<ConfigVerificationResult> results = service.verify(
+                new MockConfigurationContext(service, getClientServiceProperties(), runner.getProcessContext().getControllerServiceLookup(), new MockVariableRegistry()),
+                runner.getLogger(),
+                Collections.emptyMap()
+        );
+        assertEquals(4, results.size());
+        assertEquals(4, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SUCCESSFUL).count(), results.toString());
     }
 
     @Test
     void testVerifySuccessWithApiKeyAuth() throws IOException {
-        final Pair<String, String> apiKey = createApiKeyForIndex("*");
+        final Pair<String, String> apiKey = createApiKeyForIndex();
 
         runner.disableControllerService(service);
         runner.setProperty(service, ElasticSearchClientService.AUTHORIZATION_SCHEME, AuthorizationScheme.API_KEY.getValue());
@@ -98,13 +133,14 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         runner.setProperty(service, ElasticSearchClientService.API_KEY, apiKey.getValue());
         runner.enableControllerService(service);
 
-        final List<ConfigVerificationResult> results = ((VerifiableControllerService) service).verify(
+        final List<ConfigVerificationResult> results = service.verify(
                 new MockConfigurationContext(service, getClientServiceProperties(), runner.getProcessContext().getControllerServiceLookup(), new MockVariableRegistry()),
                 runner.getLogger(),
                 Collections.emptyMap()
         );
-        assertEquals(3, results.size());
+        assertEquals(4, results.size());
         assertEquals(3, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SUCCESSFUL).count(), results.toString());
+        assertVerifySnifferSkipped(results);
     }
 
     @Test
@@ -112,13 +148,13 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         runner.disableControllerService(service);
         runner.setProperty(service, ElasticSearchClientService.HTTP_HOSTS, "invalid");
 
-        final List<ConfigVerificationResult> results = ((VerifiableControllerService) service).verify(
+        final List<ConfigVerificationResult> results = service.verify(
                 new MockConfigurationContext(service, getClientServiceProperties(), runner.getProcessContext().getControllerServiceLookup(), new MockVariableRegistry()),
                 runner.getLogger(),
                 Collections.emptyMap()
         );
-        assertEquals(3, results.size());
-        assertEquals(2, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SKIPPED).count(), results.toString());
+        assertEquals(4, results.size());
+        assertEquals(3, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SKIPPED).count(), results.toString());
         assertEquals(1, results.stream().filter(
                 result -> Objects.equals(result.getVerificationStepName(), ElasticSearchClientServiceImpl.VERIFICATION_STEP_CLIENT_SETUP)
                         && Objects.equals(result.getExplanation(), "Incorrect/invalid " + ElasticSearchClientService.HTTP_HOSTS.getDisplayName())
@@ -141,13 +177,13 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
             // expected, ignore
         }
 
-        final List<ConfigVerificationResult> results = ((VerifiableControllerService) service).verify(
+        final List<ConfigVerificationResult> results = service.verify(
                 new MockConfigurationContext(service, getClientServiceProperties(), runner.getProcessContext().getControllerServiceLookup(), new MockVariableRegistry()),
                 runner.getLogger(),
                 Collections.emptyMap()
         );
-        assertEquals(3, results.size());
-        assertEquals(2, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SKIPPED).count(), results.toString());
+        assertEquals(4, results.size());
+        assertEquals(3, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SKIPPED).count(), results.toString());
         assertEquals(1, results.stream().filter(
                 result -> Objects.equals(result.getVerificationStepName(), ElasticSearchClientServiceImpl.VERIFICATION_STEP_CLIENT_SETUP)
                         && Objects.equals(result.getExplanation(), "Incorrect/invalid " + ElasticSearchClientService.PROP_SSL_CONTEXT_SERVICE.getDisplayName())
@@ -162,14 +198,14 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         runner.setProperty(service, ElasticSearchClientService.USERNAME, "invalid");
         runner.setProperty(service, ElasticSearchClientService.PASSWORD, "not-real");
 
-        final List<ConfigVerificationResult> results = ((VerifiableControllerService) service).verify(
+        final List<ConfigVerificationResult> results = service.verify(
                 new MockConfigurationContext(service, getClientServiceProperties(), runner.getProcessContext().getControllerServiceLookup(), new MockVariableRegistry()),
                 runner.getLogger(),
                 Collections.emptyMap()
         );
-        assertEquals(3, results.size());
+        assertEquals(4, results.size());
         assertEquals(1, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SUCCESSFUL).count(), results.toString());
-        assertEquals(1, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SKIPPED).count(), results.toString());
+        assertEquals(2, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SKIPPED).count(), results.toString());
         assertEquals(1, results.stream().filter(
                 result -> Objects.equals(result.getVerificationStepName(), ElasticSearchClientServiceImpl.VERIFICATION_STEP_CONNECTION)
                         && Objects.equals(result.getExplanation(), "Unable to retrieve system summary from Elasticsearch root endpoint")
@@ -188,14 +224,14 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         runner.setProperty(service, ElasticSearchClientService.API_KEY, "not-real");
         runner.enableControllerService(service);
 
-        final List<ConfigVerificationResult> results = ((VerifiableControllerService) service).verify(
+        final List<ConfigVerificationResult> results = service.verify(
                 new MockConfigurationContext(service, getClientServiceProperties(), runner.getProcessContext().getControllerServiceLookup(), new MockVariableRegistry()),
                 runner.getLogger(),
                 Collections.emptyMap()
         );
-        assertEquals(3, results.size());
+        assertEquals(4, results.size());
         assertEquals(1, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SUCCESSFUL).count(), results.toString());
-        assertEquals(1, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SKIPPED).count(), results.toString());
+        assertEquals(2, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SKIPPED).count(), results.toString());
         assertEquals(1, results.stream().filter(
                 result -> Objects.equals(result.getVerificationStepName(), ElasticSearchClientServiceImpl.VERIFICATION_STEP_CONNECTION)
                         && Objects.equals(result.getExplanation(), "Unable to retrieve system summary from Elasticsearch root endpoint")
@@ -583,7 +619,7 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
             assertNotNull(doc);
         } finally {
             // replace the deleted doc
-            service.add(new IndexOperationRequest(INDEX, type, "1", originalDoc, IndexOperationRequest.Operation.Index), null);
+            service.add(new IndexOperationRequest(INDEX, type, "1", originalDoc, IndexOperationRequest.Operation.Index, null, null, null), null);
             waitForIndexRefresh(); // (affects later tests using _search or _bulk)
         }
     }
@@ -624,6 +660,71 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
     }
 
     @Test
+    void testCompression() {
+        runner.disableControllerService(service);
+        //runner.setProperty(service, ElasticSearchClientService.COMPRESSION, "true");
+        runner.enableControllerService(service);
+        runner.assertValid(service);
+
+        assertTrue(service.exists(INDEX, null), "index does not exist");
+    }
+
+    @Test
+    void testNoMetaHeader() {
+        runner.disableControllerService(service);
+        //runner.setProperty(service, ElasticSearchClientService.SEND_META_HEADER, "false");
+        runner.enableControllerService(service);
+        runner.assertValid(service);
+
+        assertTrue(service.exists(INDEX, null), "index does not exist");
+    }
+
+    @Test
+    void testStrictDeprecation() {
+        runner.disableControllerService(service);
+        //runner.setProperty(service, ElasticSearchClientService.STRICT_DEPRECATION, "true");
+        runner.enableControllerService(service);
+        runner.assertValid(service);
+
+        assertTrue(service.exists(INDEX, null), "index does not exist");
+    }
+
+    @Test
+    void testNodeSelector() {
+        runner.disableControllerService(service);
+        //runner.setProperty(service, ElasticSearchClientService.NODE_SELECTOR, ElasticSearchClientService.NODE_SELECTOR_SKIP_DEDICATED_MASTERS.getValue());
+        runner.enableControllerService(service);
+        runner.assertValid(service);
+
+        assertTrue(service.exists(INDEX, null), "index does not exist");
+    }
+
+    @Test
+    void testRestClientRequestHeaders() {
+        runner.disableControllerService(service);
+        runner.setProperty(service, "User-Agent", "NiFi Integration Tests");
+        runner.setProperty(service, "X-Extra_header", "Request should still work");
+        runner.enableControllerService(service);
+        runner.assertValid(service);
+
+        assertTrue(service.exists(INDEX, null), "index does not exist");
+    }
+
+    @Test
+    void testSniffer() {
+        runner.disableControllerService(service);
+        //runner.setProperty(service, ElasticSearchClientService.SNIFF_CLUSTER_NODES, "false");
+        //runner.setProperty(service, ElasticSearchClientService.SNIFF_ON_FAILURE, "true");
+        runner.assertNotValid(service);
+
+        //runner.setProperty(service, ElasticSearchClientService.SNIFF_CLUSTER_NODES, "true");
+        runner.enableControllerService(service);
+        runner.assertValid(service);
+
+        assertTrue(service.exists(INDEX, null), "index does not exist");
+    }
+
+    @Test
     void testNullSuppression() throws InterruptedException {
         final Map<String, Object> doc = new HashMap<>();
         doc.put("msg", "test");
@@ -635,7 +736,7 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
 
         // index with nulls
         suppressNulls(false);
-        IndexOperationResponse response = service.bulk(Collections.singletonList(new IndexOperationRequest("nulls", type, "1", doc, IndexOperationRequest.Operation.Index)), null);
+        IndexOperationResponse response = service.bulk(Collections.singletonList(new IndexOperationRequest("nulls", type, "1", doc, IndexOperationRequest.Operation.Index, null, null, null)), null);
         assertNotNull(response);
         assertTrue(response.getTook() > 0);
         waitForIndexRefresh();
@@ -645,7 +746,7 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
 
         // suppress nulls
         suppressNulls(true);
-        response = service.bulk(Collections.singletonList(new IndexOperationRequest("nulls", type, "2", doc, IndexOperationRequest.Operation.Index)), null);
+        response = service.bulk(Collections.singletonList(new IndexOperationRequest("nulls", type, "2", doc, IndexOperationRequest.Operation.Index, null, null, null)), null);
         assertNotNull(response);
         assertTrue(response.getTook() > 0);
         waitForIndexRefresh();
@@ -659,13 +760,12 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
     }
 
     private void suppressNulls(final boolean suppressNulls) {
-        runner.setProperty(TestControllerServiceProcessor.CLIENT_SERVICE, "Client Service");
         runner.disableControllerService(service);
         runner.setProperty(service, ElasticSearchClientService.SUPPRESS_NULLS, suppressNulls
                 ? ElasticSearchClientService.ALWAYS_SUPPRESS.getValue()
                 : ElasticSearchClientService.NEVER_SUPPRESS.getValue());
         runner.enableControllerService(service);
-        runner.assertValid();
+        runner.assertValid(service);
     }
 
     @Test
@@ -675,12 +775,12 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
             final String index = x % 2 == 0 ? "bulk_a": "bulk_b";
             payload.add(new IndexOperationRequest(index, type, String.valueOf(x), new HashMap<String, Object>(){{
                 put("msg", "test");
-            }}, IndexOperationRequest.Operation.Index));
+            }}, IndexOperationRequest.Operation.Index, null, null, null));
         }
         for (int x = 0; x < 5; x++) {
             payload.add(new IndexOperationRequest("bulk_c", type, String.valueOf(x), new HashMap<String, Object>(){{
                 put("msg", "test");
-            }}, IndexOperationRequest.Operation.Index));
+            }}, IndexOperationRequest.Operation.Index, null, null, null));
         }
         final IndexOperationResponse response = service.bulk(payload, createParameters("refresh", "true"));
         assertNotNull(response);
@@ -703,27 +803,29 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         assertEquals(10, indexB.intValue());
         assertEquals(5, indexC.intValue());
 
-        final Long total = service.count(query, "bulk_*", type, null);
+        final Long total = service.count(query, "bulk_a,bulk_b,bulk_c", type, null);
         assertNotNull(total);
         assertEquals(25, total.intValue());
     }
 
     @Test
-    void testBulkRequestParameters() {
+    void testBulkRequestParametersAndBulkHeaders() {
         final List<IndexOperationRequest> payload = new ArrayList<>();
         for (int x = 0; x < 20; x++) {
             final String index = x % 2 == 0 ? "bulk_a": "bulk_b";
-            payload.add(new IndexOperationRequest(index, type, String.valueOf(x), new MapBuilder().of("msg", "test").build(), IndexOperationRequest.Operation.Index));
+            payload.add(new IndexOperationRequest(index, type, String.valueOf(x), new MapBuilder().of("msg", "test").build(),
+                    IndexOperationRequest.Operation.Index, null, null, Collections.singletonMap("retry_on_conflict", "3")));
         }
         for (int x = 0; x < 5; x++) {
-            payload.add(new IndexOperationRequest("bulk_c", type, String.valueOf(x), new MapBuilder().of("msg", "test").build(), IndexOperationRequest.Operation.Index));
+            payload.add(new IndexOperationRequest("bulk_c", type, String.valueOf(x), new MapBuilder().of("msg", "test").build(),
+                    IndexOperationRequest.Operation.Index, null, null, null));
         }
         final IndexOperationResponse response = service.bulk(payload, createParameters("refresh", "true"));
         assertNotNull(response);
         assertTrue(response.getTook() > 0);
 
         /*
-         * Now, check to ensure that both indexes got populated and refreshed appropriately.
+         * Now, check to ensure that all indices got populated and refreshed appropriately.
          */
         final String query = "{ \"query\": { \"match_all\": {}}}";
         final Long indexA = service.count(query, "bulk_a", type, null);
@@ -744,54 +846,113 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
     }
 
     @Test
+    void testUnknownBulkHeader() {
+        final IndexOperationRequest failingRequest = new IndexOperationRequest("bulk_c", type, "1", new MapBuilder().of("msg", "test").build(),
+                IndexOperationRequest.Operation.Index, null, null, Collections.singletonMap("not_exist", "true"));
+        final ElasticsearchException ee = assertThrows(ElasticsearchException.class, () -> service.add(failingRequest, null));
+        assertInstanceOf(ResponseException.class, ee.getCause());
+        assertTrue(ee.getCause().getMessage().contains("Action/metadata line [1] contains an unknown parameter [not_exist]"));
+    }
+
+    @Test
+    void testDynamicTemplates() {
+        assumeFalse(getElasticMajorVersion() == 6, "Requires Elasticsearch > 6");
+
+        final List<IndexOperationRequest> payload = Collections.singletonList(
+                new IndexOperationRequest("dynamo", type, "1", new MapBuilder().of("msg", "test", "hello", "world").build(),
+                        IndexOperationRequest.Operation.Index, null, new MapBuilder().of("hello", "test_text").build(), null)
+        );
+
+        final IndexOperationResponse response = service.bulk(payload, createParameters("refresh", "true"));
+        assertNotNull(response);
+        assertTrue(response.getTook() > 0);
+
+        /*
+         * Now, check the dynamic_template was applied
+         */
+        final Map<String, Object> fieldMapping = getIndexFieldMapping(type);
+        assertEquals(1, fieldMapping.size());
+        assertEquals("text", fieldMapping.get("type"));
+    }
+
+    @Test
     void testUpdateAndUpsert() throws InterruptedException {
         final String TEST_ID = "update-test";
-        final Map<String, Object> doc = new HashMap<>();
-        doc.put("msg", "Buongiorno, mondo");
-        service.add(new IndexOperationRequest(INDEX, type, TEST_ID, doc, IndexOperationRequest.Operation.Index), createParameters("refresh", "true"));
-        Map<String, Object> result = service.get(INDEX, type, TEST_ID, null);
-        assertEquals(doc, result, "Not the same");
-
-        final Map<String, Object> updates = new HashMap<>();
-        updates.put("from", "john.smith");
-        final Map<String, Object> merged = new HashMap<>();
-        merged.putAll(updates);
-        merged.putAll(doc);
-        IndexOperationRequest request = new IndexOperationRequest(INDEX, type, TEST_ID, updates, IndexOperationRequest.Operation.Update);
-        service.add(request, createParameters("refresh", "true"));
-        result = service.get(INDEX, type, TEST_ID, null);
-        assertTrue(result.containsKey("from"));
-        assertTrue(result.containsKey("msg"));
-        assertEquals(merged, result, "Not the same after update.");
-
         final String UPSERTED_ID = "upsert-ftw";
-        final Map<String, Object> upsertItems = new HashMap<>();
-        upsertItems.put("upsert_1", "hello");
-        upsertItems.put("upsert_2", 1);
-        upsertItems.put("upsert_3", true);
-        request = new IndexOperationRequest(INDEX, type, UPSERTED_ID, upsertItems, IndexOperationRequest.Operation.Upsert);
-        service.add(request, createParameters("refresh", "true"));
-        result = service.get(INDEX, type, UPSERTED_ID, null);
-        assertEquals(upsertItems, result);
+        final String UPSERT_SCRIPT_ID = "upsert-script";
+        try {
+            final Map<String, Object> doc = new HashMap<>();
+            doc.put("msg", "Buongiorno, mondo");
+            doc.put("counter", 1);
+            service.add(new IndexOperationRequest(INDEX, type, TEST_ID, doc, IndexOperationRequest.Operation.Index, null, null, null), createParameters("refresh", "true"));
+            Map<String, Object> result = service.get(INDEX, type, TEST_ID, null);
+            assertEquals(doc, result, "Not the same");
 
-        final List<IndexOperationRequest> deletes = new ArrayList<>();
-        deletes.add(new IndexOperationRequest(INDEX, type, TEST_ID, null, IndexOperationRequest.Operation.Delete));
-        deletes.add(new IndexOperationRequest(INDEX, type, UPSERTED_ID, null, IndexOperationRequest.Operation.Delete));
-        assertFalse(service.bulk(deletes, createParameters("refresh", "true")).hasErrors());
-        waitForIndexRefresh(); // wait 1s for index refresh (doesn't prevent GET but affects later tests using _search or _bulk)
-        ElasticsearchException ee = assertThrows(ElasticsearchException.class, () -> service.get(INDEX, type, TEST_ID, null) );
-        assertTrue(ee.isNotFound());
-        ee = assertThrows(ElasticsearchException.class, () -> service.get(INDEX, type, UPSERTED_ID, null));
-        assertTrue(ee.isNotFound());
+            final Map<String, Object> updates = new HashMap<>();
+            updates.put("from", "john.smith");
+            final Map<String, Object> merged = new HashMap<>();
+            merged.putAll(updates);
+            merged.putAll(doc);
+            IndexOperationRequest request = new IndexOperationRequest(INDEX, type, TEST_ID, updates, IndexOperationRequest.Operation.Update, null, null, null);
+            service.add(request, createParameters("refresh", "true"));
+            result = service.get(INDEX, type, TEST_ID, null);
+            assertTrue(result.containsKey("from"));
+            assertTrue(result.containsKey("counter"));
+            assertTrue(result.containsKey("msg"));
+            assertEquals(merged, result, "Not the same after update.");
+
+            final Map<String, Object> upsertItems = new HashMap<>();
+            upsertItems.put("upsert_1", "hello");
+            upsertItems.put("upsert_2", 1);
+            upsertItems.put("upsert_3", true);
+            request = new IndexOperationRequest(INDEX, type, UPSERTED_ID, upsertItems, IndexOperationRequest.Operation.Upsert, null, null, null);
+            service.add(request, createParameters("refresh", "true"));
+            result = service.get(INDEX, type, UPSERTED_ID, null);
+            assertEquals(upsertItems, result);
+
+            final Map<String, Object> upsertDoc = new HashMap<>();
+            upsertDoc.put("msg", "Only if doesn't already exist");
+            final Map<String, Object> script = new HashMap<>();
+            script.put("source", "ctx._source.counter += params.count");
+            script.put("lang", "painless");
+            script.put("params", Collections.singletonMap("count", 2));
+            // apply script to existing document
+            request = new IndexOperationRequest(INDEX, type, TEST_ID, upsertDoc, IndexOperationRequest.Operation.Upsert, script, null, null);
+            service.add(request, createParameters("refresh", "true"));
+            result = service.get(INDEX, type, TEST_ID, null);
+            assertEquals(doc.get("msg"), result.get("msg"));
+            assertEquals(3, result.get("counter"));
+            // index document that doesn't already exist (don't apply script)
+            request = new IndexOperationRequest(INDEX, type, UPSERT_SCRIPT_ID, upsertDoc, IndexOperationRequest.Operation.Upsert, script, null, null);
+            service.add(request, createParameters("refresh", "true"));
+            result = service.get(INDEX, type, UPSERT_SCRIPT_ID, null);
+            assertEquals(upsertDoc, result);
+        } finally {
+            final List<IndexOperationRequest> deletes = new ArrayList<>();
+            deletes.add(new IndexOperationRequest(INDEX, type, TEST_ID, null, IndexOperationRequest.Operation.Delete, null, null, null));
+            deletes.add(new IndexOperationRequest(INDEX, type, UPSERTED_ID, null, IndexOperationRequest.Operation.Delete, null, null, null));
+            deletes.add(new IndexOperationRequest(INDEX, type, UPSERT_SCRIPT_ID, null, IndexOperationRequest.Operation.Delete, null, null, null));
+            assertFalse(service.bulk(deletes, createParameters("refresh", "true")).hasErrors());
+            waitForIndexRefresh(); // wait 1s for index refresh (doesn't prevent GET but affects later tests using _search or _bulk)
+            ElasticsearchException ee = assertThrows(ElasticsearchException.class, () -> service.get(INDEX, type, TEST_ID, null));
+            assertTrue(ee.isNotFound());
+            ee = assertThrows(ElasticsearchException.class, () -> service.get(INDEX, type, UPSERTED_ID, null));
+            assertTrue(ee.isNotFound());
+            ee = assertThrows(ElasticsearchException.class, () -> service.get(INDEX, type, UPSERT_SCRIPT_ID, null));
+            assertTrue(ee.isNotFound());
+        }
     }
 
     @SuppressWarnings("unchecked")
     @Test
     void testGetBulkResponsesWithErrors() {
         final List<IndexOperationRequest> ops = Arrays.asList(
-                new IndexOperationRequest(INDEX, type, "1", new MapBuilder().of("msg", "one", "intField", 1).build(), IndexOperationRequest.Operation.Index), // OK
-                new IndexOperationRequest(INDEX, type, "2", new MapBuilder().of("msg", "two", "intField", 1).build(), IndexOperationRequest.Operation.Create), // already exists
-                new IndexOperationRequest(INDEX, type, "1", new MapBuilder().of("msg", "one", "intField", "notaninteger").build(), IndexOperationRequest.Operation.Index) // can't parse int field
+                new IndexOperationRequest(INDEX, type, "1", new MapBuilder().of("msg", "one", "intField", 1).build(),
+                        IndexOperationRequest.Operation.Index, null, null, null), // OK
+                new IndexOperationRequest(INDEX, type, "2", new MapBuilder().of("msg", "two", "intField", 1).build(),
+                        IndexOperationRequest.Operation.Create, null, null, null), // already exists
+                new IndexOperationRequest(INDEX, type, "1", new MapBuilder().of("msg", "one", "intField", "notaninteger").build(),
+                        IndexOperationRequest.Operation.Index, null, null, null) // can't parse int field
         );
         final IndexOperationResponse response = service.bulk(ops, createParameters("refresh", "true"));
         assertTrue(response.hasErrors());
@@ -823,4 +984,62 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         Thread.sleep(1000);
     }
 
+    private void assertVerifySnifferSkipped(final List<ConfigVerificationResult> results) {
+//        assertEquals(1, results.stream().filter(
+//                        result -> Objects.equals(result.getVerificationStepName(), ElasticSearchClientServiceImpl.VERIFICATION_STEP_SNIFFER)
+//                                && Objects.equals(result.getExplanation(), "Sniff on Connection not enabled")
+//                                && result.getOutcome() == ConfigVerificationResult.Outcome.SKIPPED).count(),
+//                results.toString()
+//        );
+    }
+
+    protected Pair<String, String> createApiKeyForIndex() throws IOException {
+        final String body = prettyJson(new MapBuilder()
+                .of("name", "test-api-key")
+                .of("role_descriptors", new MapBuilder()
+                        .of("test-role", new MapBuilder()
+                                .of("cluster", Collections.singletonList("all"))
+                                .of("index", Collections.singletonList(new MapBuilder()
+                                        .of("names", Collections.singletonList("*"))
+                                        .of("privileges", Collections.singletonList("all"))
+                                        .build()))
+                                .build())
+                        .build())
+                .build());
+        final String endpoint = String.format("%s/%s", elasticsearchHost, "_security/api_key");
+        final Request request = new Request("POST", endpoint);
+        final HttpEntity jsonBody = new NStringEntity(body, ContentType.APPLICATION_JSON);
+        request.setEntity(jsonBody);
+
+        final Response response = testDataManagementClient.performRequest(request);
+        final InputStream inputStream = response.getEntity().getContent();
+        final byte[] result = IOUtils.toByteArray(inputStream);
+        inputStream.close();
+        final Map<String, String> ret = MAPPER.readValue(new String(result, StandardCharsets.UTF_8), new TypeReference<Map<String, String>>() {});
+        return Pair.of(ret.get("id"), ret.get("api_key"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> getIndexFieldMapping(final String type) {
+        final String index = "dynamo";
+        final String field = "hello";
+
+        final Request request = new Request("GET",
+                String.format("%s/%s/_mapping%s/field/%s", elasticsearchHost, index, StringUtils.isBlank(type) ? "" : "/" + type, field)
+        );
+        try {
+            final Response response = testDataManagementClient.performRequest(request);
+            final InputStream inputStream = response.getEntity().getContent();
+            final byte[] result = IOUtils.toByteArray(inputStream);
+            inputStream.close();
+            final Map<String, Object> parsed = (Map<String, Object>) MAPPER.readValue(new String(result, StandardCharsets.UTF_8), Map.class);
+            final Map<String, Object> parsedIndex = (Map<String, Object>) parsed.get(index);
+            final Map<String, Object> parsedMappings = (Map<String, Object>) (StringUtils.isBlank(type)
+                    ? parsedIndex.get("mappings")
+                    : ((Map<String, Object>) parsedIndex.get("mappings")).get(type));
+            return (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) parsedMappings.get(field)).get("mapping")).get(field);
+        } catch (final IOException ioe) {
+            throw new IllegalStateException(String.format("Error getting field mappings %s [%s]", index, field), ioe);
+        }
+    }
 }

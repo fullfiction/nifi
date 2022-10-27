@@ -36,15 +36,12 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.util.StandardValidators;
+import org.apache.nifi.record.path.validation.RecordPathValidator;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 public abstract class AbstractPutElasticsearch extends AbstractProcessor implements ElasticsearchRestProcessor {
     static final PropertyDescriptor BATCH_SIZE = new PropertyDescriptor.Builder()
@@ -60,7 +57,7 @@ public abstract class AbstractPutElasticsearch extends AbstractProcessor impleme
     static final PropertyDescriptor INDEX_OP = new PropertyDescriptor.Builder()
         .name("put-es-record-index-op")
         .displayName("Index Operation")
-        .description("The type of the operation used to index (create, delete, index, update, upsert)")
+        .description("The type of the operation used to index (create, delete, index, update, upsert, scripted-upsert)")
         .addValidator(StandardValidators.NON_EMPTY_EL_VALIDATOR)
         .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
         .defaultValue(IndexOperationRequest.Operation.Index.getValue())
@@ -79,8 +76,13 @@ public abstract class AbstractPutElasticsearch extends AbstractProcessor impleme
             IndexOperationRequest.Operation.Delete.getValue().toLowerCase(),
             IndexOperationRequest.Operation.Index.getValue().toLowerCase(),
             IndexOperationRequest.Operation.Update.getValue().toLowerCase(),
-            IndexOperationRequest.Operation.Upsert.getValue().toLowerCase()
+            IndexOperationRequest.Operation.Upsert.getValue().toLowerCase(),
+            IndexOperationRequest.Operation.ScriptedUpsert.getValue().toLowerCase()
     ));
+
+    static final String BULK_HEADER_PREFIX = "BULK:";
+
+    static final ObjectMapper MAPPER = new ObjectMapper();
 
     boolean logErrors;
     boolean notFoundIsSuccessful;
@@ -90,13 +92,19 @@ public abstract class AbstractPutElasticsearch extends AbstractProcessor impleme
 
     @Override
     protected PropertyDescriptor getSupportedDynamicPropertyDescriptor(final String propertyDescriptorName) {
-        return new PropertyDescriptor.Builder()
+        final PropertyDescriptor.Builder builder = new PropertyDescriptor.Builder()
                 .name(propertyDescriptorName)
                 .required(false)
-                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
-                .dynamic(true)
-                .build();
+                .dynamic(true);
+
+        if (propertyDescriptorName.startsWith(BULK_HEADER_PREFIX)) {
+            builder.addValidator(new RecordPathValidator());
+        } else {
+            builder.addValidator(StandardValidators.NON_EMPTY_VALIDATOR);
+        }
+
+        return builder.build();
     }
 
     @Override
@@ -145,6 +153,16 @@ public abstract class AbstractPutElasticsearch extends AbstractProcessor impleme
         validationResults.add(indexOpValidationResult.build());
 
         return validationResults;
+    }
+
+    Map<String, String> getRequestURLParameters(final Map<String, String> dynamicProperties) {
+        return dynamicProperties.entrySet().stream().filter(e -> !e.getKey().startsWith(BULK_HEADER_PREFIX))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    Map<String, String> getBulkHeaderParameters(final Map<String, String> dynamicProperties) {
+        return dynamicProperties.entrySet().stream().filter(e -> e.getKey().startsWith(BULK_HEADER_PREFIX))
+                .collect(Collectors.toMap(e -> e.getKey().replace(BULK_HEADER_PREFIX, "").trim(), Map.Entry::getValue));
     }
 
     void transferFlowFilesOnException(final Exception ex, final Relationship rel, final ProcessSession session,

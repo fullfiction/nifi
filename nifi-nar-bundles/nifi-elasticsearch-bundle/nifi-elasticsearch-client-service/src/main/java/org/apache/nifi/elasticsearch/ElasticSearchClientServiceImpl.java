@@ -413,25 +413,31 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
 
     private String buildBulkHeader(final IndexOperationRequest request) throws JsonProcessingException {
         final String operation = request.getOperation().equals(IndexOperationRequest.Operation.Upsert)
+                || request.getOperation().equals(IndexOperationRequest.Operation.ScriptedUpsert)
                 ? "update"
                 : request.getOperation().getValue();
-        return buildBulkHeader(operation, request.getIndex(), request.getType(), request.getId());
+        return buildBulkHeader(operation, request.getIndex(), request.getType(), request.getId(), request.getDynamicTemplates(), request.getHeaderFields());
     }
 
-    private String buildBulkHeader(final String operation, final String index, final String type, final String id) throws JsonProcessingException {
-        final Map<String, Object> header = new HashMap<String, Object>() {{
-            put(operation, new HashMap<String, Object>() {{
-                put("_index", index);
-                if (StringUtils.isNotBlank(id)) {
-                    put("_id", id);
-                }
-                if (StringUtils.isNotBlank(type)) {
-                    put("_type", type);
-                }
-            }});
-        }};
+    private String buildBulkHeader(final String operation, final String index, final String type, final String id,
+                                   final Map<String, Object> dynamicTemplates, final Map<String, String> headerFields) throws JsonProcessingException {
+        final Map<String, Object> operationBody = new HashMap<>();
+        operationBody.put("_index", index);
+        if (StringUtils.isNotBlank(id)) {
+            operationBody.put("_id", id);
+        }
+        if (StringUtils.isNotBlank(type)) {
+            operationBody.put("_type", type);
+        }
+        if (dynamicTemplates != null && !dynamicTemplates.isEmpty()) {
+            operationBody.put("dynamic_templates", dynamicTemplates);
+        }
+        if (headerFields != null && !headerFields.isEmpty()) {
+            headerFields.entrySet().stream().filter(e -> StringUtils.isNotBlank(e.getValue()))
+                    .forEach(e -> operationBody.putIfAbsent(e.getKey(), e.getValue()));
+        }
 
-        return flatten(mapper.writeValueAsString(header));
+        return flatten(mapper.writeValueAsString(Collections.singletonMap(operation, operationBody)));
     }
 
     protected void buildRequest(final IndexOperationRequest request, final StringBuilder builder) throws JsonProcessingException {
@@ -445,13 +451,26 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
                 break;
             case Update:
             case Upsert:
-                final Map<String, Object> doc = new HashMap<String, Object>() {{
-                    put("doc", request.getFields());
-                    if (request.getOperation().equals(IndexOperationRequest.Operation.Upsert)) {
-                        put("doc_as_upsert", true);
+            case ScriptedUpsert:
+                final Map<String, Object> updateBody = new HashMap<>(3, 1);
+                if (request.getScript() != null && !request.getScript().isEmpty()) {
+                    var script = request.getScript();
+                    if(request.getOperation().equals(IndexOperationRequest.Operation.ScriptedUpsert)) {
+                        updateBody.put("scripted_upsert", true);
+                        script.put("params", request.getFields());
                     }
-                }};
-                final String update = flatten(mapper.writeValueAsString(doc)).trim();
+                    updateBody.put("script", request.getScript());
+                    if (request.getOperation().equals(IndexOperationRequest.Operation.Upsert)) {
+                        updateBody.put("upsert", request.getFields());
+                    }
+                } else {
+                    updateBody.put("doc", request.getFields());
+                    if (request.getOperation().equals(IndexOperationRequest.Operation.Upsert)) {
+                        updateBody.put("doc_as_upsert", true);
+                    }
+                }
+
+                final String update = flatten(mapper.writeValueAsString(updateBody)).trim();
                 builder.append(update).append("\n");
                 break;
             case Delete:
@@ -510,7 +529,7 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
         try {
             final StringBuilder sb = new StringBuilder();
             for (final String id : ids) {
-                final String header = buildBulkHeader("delete", index, type, id);
+                final String header = buildBulkHeader("delete", index, type, id, null, null);
                 sb.append(header).append("\n");
             }
             final HttpEntity entity = new NStringEntity(sb.toString(), ContentType.APPLICATION_JSON);

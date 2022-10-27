@@ -88,7 +88,7 @@ public abstract class AbstractElasticsearchITBase {
 
     protected static String type;
 
-    private static RestClient testDataManagementClient;
+    public static RestClient testDataManagementClient;
 
     protected static void stopTestcontainer() {
         if (ENABLE_TEST_CONTAINERS) {

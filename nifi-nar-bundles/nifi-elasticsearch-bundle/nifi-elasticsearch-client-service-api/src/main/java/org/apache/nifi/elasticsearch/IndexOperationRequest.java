@@ -31,13 +31,21 @@ public class IndexOperationRequest {
     private final String id;
     private final Map<String, Object> fields;
     private final Operation operation;
+    private final Map<String, Object> script;
+    private final Map<String, Object> dynamicTemplates;
+    private final Map<String, String> headerFields;
 
-    public IndexOperationRequest(final String index, final String type, final String id, final Map<String, Object> fields, final Operation operation) {
+    public IndexOperationRequest(final String index, final String type, final String id, final Map<String, Object> fields,
+                                 final Operation operation, final Map<String, Object> script, final Map<String, Object> dynamicTemplates,
+                                 final Map<String, String> headerFields) {
         this.index = index;
         this.type = type;
         this.id = id;
         this.fields = fields;
         this.operation = operation;
+        this.script = script;
+        this.dynamicTemplates = dynamicTemplates;
+        this.headerFields = headerFields;
     }
 
     public String getIndex() {
@@ -60,12 +68,26 @@ public class IndexOperationRequest {
         return operation;
     }
 
+    public Map<String, Object> getScript() {
+        return script;
+    }
+
+    public Map<String, Object> getDynamicTemplates() {
+        return dynamicTemplates;
+    }
+
+    public Map<String, String> getHeaderFields() {
+        return headerFields;
+    }
+
     public enum Operation {
         Create("create"),
         Delete("delete"),
         Index("index"),
         Update("update"),
-        Upsert("upsert");
+        Upsert("upsert"),
+        ScriptedUpsert("scripted-upsert");
+
         private final String value;
 
         Operation(final String value) {
@@ -81,10 +103,6 @@ public class IndexOperationRequest {
                     .filter(o -> o.getValue().equalsIgnoreCase(value)).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException(String.format("Unknown Index Operation %s", value)));
         }
-
-        public static String[] allValues() {
-            return Arrays.stream(Operation.values()).map(Operation::getValue).sorted().toArray(String[]::new);
-        }
     }
 
     @Override
@@ -95,6 +113,9 @@ public class IndexOperationRequest {
                 ", id='" + id + '\'' +
                 ", fields=" + fields +
                 ", operation=" + operation +
+                ", script=" + script +
+                ", dynamicTemplates=" + dynamicTemplates +
+                ", headerFields=" + headerFields +
                 '}';
     }
 }
