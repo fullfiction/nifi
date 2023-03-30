@@ -81,8 +81,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 
 @InputRequirement(InputRequirement.Requirement.INPUT_REQUIRED)
-@Tags({"json", "elasticsearch", "elasticsearch5", "elasticsearch6", "elasticsearch7", "elasticsearch8", "put", "index", "record"})
-@CapabilityDescription("A record-aware Elasticsearch put processor that uses the official Elastic REST client libraries.")
+@Tags({"BOG", "json", "elasticsearch", "elasticsearch5", "elasticsearch6", "elasticsearch7", "elasticsearch8", "put", "index", "record"})
+@CapabilityDescription("[BOG] A record-aware Elasticsearch put processor that uses the official Elastic REST client libraries.")
 @WritesAttributes({
         @WritesAttribute(attribute = "elasticsearch.put.error", description = "The error message provided by Elasticsearch if there is an error indexing the documents."),
         @WritesAttribute(attribute = "elasticsearch.put.error.count", description = "The number of records that generated errors in the Elasticsearch _bulk API."),

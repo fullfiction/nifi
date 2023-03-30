@@ -18,7 +18,7 @@ language governing permissions and limitations under the License. -->
         <version>1.20.0</version>
     </parent>
 
-    <artifactId>nifi-elasticsearch-bundle</artifactId>
+    <artifactId>nifi-elasticsearch-bundle-bog</artifactId>
     <packaging>pom</packaging>
 
     <modules>
@@ -37,12 +37,12 @@ language governing permissions and limitations under the License. -->
         <dependencies>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
-                <artifactId>nifi-elasticsearch-processors</artifactId>
+                <artifactId>nifi-elasticsearch-processors-bog</artifactId>
                 <version>1.20.0</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
-                <artifactId>nifi-elasticsearch-restapi-processors</artifactId>
+                <artifactId>nifi-elasticsearch-restapi-processors-bog</artifactId>
                 <version>1.20.0</version>
             </dependency>
             <!-- Override commons-compress -->

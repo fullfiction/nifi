@@ -49,9 +49,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-@CapabilityDescription("Lookup a record from Elasticsearch Server associated with the specified document ID. " +
+@CapabilityDescription("[BOG] Lookup a record from Elasticsearch Server associated with the specified document ID. " +
         "The coordinates that are passed to the lookup must contain the key 'id'.")
-@Tags({"lookup", "enrich", "record", "elasticsearch"})
+@Tags({"BOG", "lookup", "enrich", "record", "elasticsearch"})
 @DynamicProperty(name = "A JSONPath expression", value = "A Record Path expression",
         description = "Retrieves an object using JSONPath from the result document and places it in the return Record at the specified Record Path.")
 public class ElasticSearchLookupService extends JsonInferenceSchemaRegistryService implements LookupService<Record> {

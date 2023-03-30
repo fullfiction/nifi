@@ -18,11 +18,11 @@
 
     <parent>
         <groupId>org.apache.nifi</groupId>
-        <artifactId>nifi-elasticsearch-bundle</artifactId>
+        <artifactId>nifi-elasticsearch-bundle-bog</artifactId>
         <version>1.20.0</version>
     </parent>
 
-    <artifactId>nifi-elasticsearch-client-service</artifactId>
+    <artifactId>nifi-elasticsearch-client-service-bog</artifactId>
     <packaging>jar</packaging>
 
     <dependencies>
@@ -69,7 +69,7 @@
         </dependency>
         <dependency>
             <groupId>org.apache.nifi</groupId>
-            <artifactId>nifi-elasticsearch-client-service-api</artifactId>
+            <artifactId>nifi-elasticsearch-client-service-api-bog</artifactId>
             <version>1.20.0</version>
             <scope>provided</scope>
         </dependency>
@@ -153,7 +153,7 @@
         </dependency>
         <dependency>
             <groupId>org.apache.nifi</groupId>
-            <artifactId>nifi-elasticsearch-test-utils</artifactId>
+            <artifactId>nifi-elasticsearch-test-utils-bog</artifactId>
             <version>1.20.0</version>
             <scope>test</scope>
         </dependency>

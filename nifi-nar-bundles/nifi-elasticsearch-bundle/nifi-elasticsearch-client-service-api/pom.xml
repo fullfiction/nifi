@@ -18,11 +18,11 @@
 
     <parent>
         <groupId>org.apache.nifi</groupId>
-        <artifactId>nifi-elasticsearch-bundle</artifactId>
+        <artifactId>nifi-elasticsearch-bundle-bog</artifactId>
         <version>1.20.0</version>
     </parent>
 
-    <artifactId>nifi-elasticsearch-client-service-api</artifactId>
+    <artifactId>nifi-elasticsearch-client-service-api-bog</artifactId>
     <packaging>jar</packaging>
 
     <dependencies>

@@ -12,12 +12,12 @@ language governing permissions and limitations under the License. -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <artifactId>nifi-elasticsearch-bundle</artifactId>
+        <artifactId>nifi-elasticsearch-bundle-bog</artifactId>
         <groupId>org.apache.nifi</groupId>
         <version>1.20.0</version>
     </parent>
 
-    <artifactId>nifi-elasticsearch-restapi-nar</artifactId>
+    <artifactId>nifi-elasticsearch-restapi-nar-bog</artifactId>
     <packaging>nar</packaging>
     <properties>
         <maven.javadoc.skip>true</maven.javadoc.skip>
@@ -28,13 +28,13 @@ language governing permissions and limitations under the License. -->
     <dependencies>
         <dependency>
             <groupId>org.apache.nifi</groupId>
-            <artifactId>nifi-elasticsearch-client-service-api-nar</artifactId>
+            <artifactId>nifi-elasticsearch-client-service-api-nar-bog</artifactId>
             <version>1.20.0</version>
             <type>nar</type>
         </dependency>
         <dependency>
             <groupId>org.apache.nifi</groupId>
-            <artifactId>nifi-elasticsearch-restapi-processors</artifactId>
+            <artifactId>nifi-elasticsearch-restapi-processors-bog</artifactId>
             <version>1.20.0</version>
         </dependency>
     </dependencies>

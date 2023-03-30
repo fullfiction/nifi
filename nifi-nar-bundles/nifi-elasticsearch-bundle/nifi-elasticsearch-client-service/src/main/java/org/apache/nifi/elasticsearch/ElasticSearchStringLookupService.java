@@ -37,9 +37,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-@CapabilityDescription("Lookup a string value from Elasticsearch Server associated with the specified document ID. " +
+@CapabilityDescription("[BOG] Lookup a string value from Elasticsearch Server associated with the specified document ID. " +
         "The coordinates that are passed to the lookup must contain the key 'id'.")
-@Tags({"lookup", "enrich", "value", "key", "elasticsearch"})
+@Tags({"BOG", "lookup", "enrich", "value", "key", "elasticsearch"})
 public class ElasticSearchStringLookupService extends AbstractControllerService implements StringLookupService {
     public static final PropertyDescriptor CLIENT_SERVICE = new PropertyDescriptor.Builder()
             .name("el-rest-client-service")
