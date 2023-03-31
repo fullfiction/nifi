@@ -32,8 +32,8 @@ import org.apache.nifi.ssl.SSLContextService;
 import java.util.List;
 import java.util.Map;
 
-@Tags({"elasticsearch", "client"})
-@CapabilityDescription("A controller service for accessing an Elasticsearch client.")
+@Tags({"bog","elasticsearch", "client"})
+@CapabilityDescription("[BOG] A controller service for accessing an Elasticsearch client.")
 public interface ElasticSearchClientService extends ControllerService, VerifiableControllerService {
     PropertyDescriptor HTTP_HOSTS = new PropertyDescriptor.Builder()
             .name("el-cs-http-hosts")
