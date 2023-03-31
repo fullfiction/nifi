@@ -32,6 +32,8 @@ import org.apache.http.entity.ContentType;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.nio.entity.NStringEntity;
+import org.apache.nifi.annotation.documentation.CapabilityDescription;
+import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnDisabled;
 import org.apache.nifi.annotation.lifecycle.OnEnabled;
 import org.apache.nifi.components.ConfigVerificationResult;
@@ -75,6 +77,8 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+@Tags({"bog","elasticsearch", "client"})
+@CapabilityDescription("[BOG] A controller service for accessing an Elasticsearch client.")
 public class ElasticSearchClientServiceImpl extends AbstractControllerService implements ElasticSearchClientService {
     public static final String VERIFICATION_STEP_CONNECTION = "Elasticsearch Connection";
     public static final String VERIFICATION_STEP_CLIENT_SETUP = "Elasticsearch Rest Client Setup";
@@ -460,7 +464,8 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
                         script.put("params", request.getFields());
                     }
                     updateBody.put("script", request.getScript());
-                    if (request.getOperation().equals(IndexOperationRequest.Operation.Upsert)) {
+                    if (request.getOperation().equals(IndexOperationRequest.Operation.Upsert)
+                    || request.getOperation().equals(IndexOperationRequest.Operation.ScriptedUpsert)) {
                         updateBody.put("upsert", request.getFields());
                     }
                 } else {
