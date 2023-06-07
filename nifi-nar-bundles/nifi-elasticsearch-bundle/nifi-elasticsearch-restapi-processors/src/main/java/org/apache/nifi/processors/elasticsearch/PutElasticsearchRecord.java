@@ -425,13 +425,13 @@ public class PutElasticsearchRecord extends AbstractPutElasticsearch {
 
     private void addOperation(final List<IndexOperationRequest> operationList, final Record record, final IndexOperationParameters indexOperationParameters,
                               final Set<String> indices, final Set<String> types) {
-        final String index = getFromRecordPath(record, indexOperationParameters.getIndexPath(), true, indexOperationParameters.getDefaultIndex(), false);
+        final String index = getFromRecordPath(record, indexOperationParameters.getIndexPath(), true, indexOperationParameters.getDefaultIndex(), true);
         indices.add(index);
-        final String type = getFromRecordPath(record, indexOperationParameters.getTypePath(), true, indexOperationParameters.getDefaultType(), false);
+        final String type = getFromRecordPath(record, indexOperationParameters.getTypePath(), true, indexOperationParameters.getDefaultType(), true);
         if (StringUtils.isNotBlank(type)) {
             types.add(type);
         }
-        final String op = getFromRecordPath(record, indexOperationParameters.getIndexOpPath(), true, indexOperationParameters.getDefaultIndexOp(), false);
+        final String op = getFromRecordPath(record, indexOperationParameters.getIndexOpPath(), true, indexOperationParameters.getDefaultIndexOp(), true);
         final IndexOperationRequest.Operation indexOp = IndexOperationRequest.Operation.forValue(op);
         final String id = getFromRecordPath(record, indexOperationParameters.getIdPath(), true, null, indexOperationParameters.isRetainId());
         final Object atTimestamp = getTimestampFromRecordPath(record, indexOperationParameters.getAtTimestampPath(),
